@@ -5,7 +5,7 @@ The light of dawn showing the way out of the woods, a lighthouse leading ships t
 The lighting pillars have begun to move, no more mere static points, reliable coordinates in the dark. As they make their way along an unpredictable path, they are communicating among themselves with a language of light signals, broadcasting the distance between eachother. The author develops the fascination with mechanisms, motion and reactive objects that he previously already established with his projects Corporis animati (2015) and Horse power: the poetics of movement (2016). The mass and robustness of his installations serve as a counterpoint to the cyber culture of the non-material and the virtual, his objects-automata-animals are decidedly physical and corporeal. The focus is on the unpredictable behaviour of these mobile, animated bodies, rather than on their perfect and purpose-driven functioning that we have been taught to expect from machines.
 
 
-**Concept and construction of mechanisms:** [Zoran Srdič Janežić](http://zsj.si/)  
+**Concept and construction of mechanisms:** [Zoran Srdić Janežič](http://zsj.si/)  
 **Programming:** [Matic Potočnik](https://hairyfotr.psywerx.org), [Blaž Berdnik](https://github.com/razee)  
 **Expert help and casting:** Polona Černe  
 **Production:** Jana Putrle Srdić, [Zavod Gulag](http://gulag.si/)  
