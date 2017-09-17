@@ -1,0 +1,28 @@
+Electronics
+
+For one pillar:
+1x Arduino (UNO)
+2x 12V Battery
+2x Windshield wiper motor (used Clio I and II)
+2x Flyback diode (1N4007)
+3x MOSFET 5V->12V (IRL2203NPBF)
+4x Sonar (HC-SR04)
+4x Light resistor (LDR 07)
+1x 12V SMD LED
+~6m UTP cable for signals
+~2m Fat cable for battery/motors
+~3x Protoboard
+~20x pins
+~10x Terminal blocks / Wire joiners / ...
+1x Main switch
+a few resistors (pull ups, voltage division, ...)
+1x 5m USB A/B cable (for development)
+1x Battery charger (for recharging)
+...
+
+For glove:
+3V Silver-oxide cell battery
+Battery holder
+Small switch
+3x Bright LEDs
+...
