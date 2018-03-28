@@ -15,28 +15,39 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <ST_HW_HC_SR04.h>
 
+//Enables debug output
+#define DEBUG
+//#define LIGHT_TEST
+//#define MOTOR_TEST
+
 // Define the robot you're currently working with
 // See markings on the inside of the base circle
 
 // Mama!
-#define I
+//#define I
 
-// Works, but had a busted Arduino, and has a cracked top
+// Works, but had two busted Arduinos already, and has a cracked top
+// Also now light sensors are dead (1023 all the time)
+//BN: Unknown board
+//VID: 1A86
+//PID: 7523
+//SN: Upload any sketch to obtain it
 //#define II
 
 // Works
+//BN: Arduino/Genuino Uno
+//VID: 2341
+//PID: 0243
+//SN: 75533353837351104041
 //#define III
 
 // Works
-//#define IIII
+#define IIII
 
 // Motors don't work... best to disable them
 // It looks like IIII, but look closer... 2cm off there is another I
 //#define IIIII
 //#define DisableMotors
-
-//Enables output
-//#define Debug
 
 //
 // Utils
@@ -424,7 +435,6 @@ void loop() {
   delay(100);
   cnt++;
 
-  //#define LIGHT_TEST
   #ifdef LIGHT_TEST
     Serial.println("Light");
     analogWrite(ledPin1, 255);
@@ -437,7 +447,6 @@ void loop() {
     analogWrite(ledPin2, 0);
   #endif
 
-  //#define MOTOR_TEST
   #ifdef MOTOR_TEST
     Serial.println("Left");
     digitalWrite(motorLeftPin1, HIGH);
