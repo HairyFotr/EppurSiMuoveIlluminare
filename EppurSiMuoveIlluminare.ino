@@ -16,7 +16,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <ST_HW_HC_SR04.h>
 
 //Enables debug output
-#define DEBUG
+//#define DEBUG
 //#define LIGHT_TEST
 //#define MOTOR_TEST
 
@@ -42,19 +42,110 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //#define III
 
 // Works
-#define IIII
+//#define IIII
 
-// Motors don't work... best to disable them
 // It looks like IIII, but look closer... 2cm off there is another I
-//#define IIIII
-//#define DisableMotors
+// Motor pins are White=+, Brown=Gnd
+#define IIIII
+
+// Clockwise
+const int
+  FRONT = 0,
+  RIGHT = 1,
+  BACK  = 2,
+  LEFT  = 3;
+String dirToString(int dir) {
+  switch(dir) {
+    case FRONT: return "Front";
+    case RIGHT: return "Right";
+    case BACK:  return "Back";
+    case LEFT:  return "Left";
+  }
+}
+
+bool mamaCalling = false;
+int mamaDir = FRONT;
+float mamaAngle = 0;
+bool happening = false;
+bool motorSoundOn = false;
+int lastHappening = 0;
 
 //
 // Utils
+void handleEvents(unsigned long duration) {
+  unsigned long start = millis();
+  unsigned long now = start;
+  do {
+    handleSound();
+    handleLDRs();
+  } while (millis() - start < duration);
+}
+void sleep(unsigned long duration) {
+  handleEvents(duration);
+}
+
+int bell(int range, int n) {
+  int out = 0;
+  for (int i = 0; i < n; i++) {
+    out += random(range);
+  }
+  return out/n;
+}
+
+int k = 0;
+bool kInc = true;
+unsigned long last = 0;
+unsigned long lastSoundDuration = 0;
+int soundPin = 8;
+int lastReason = 0;
+
+// Sound generator
+bool soundEnabled = false;
+void handleSound() {
+  int newReason = 0; {
+    if (mamaCalling) newReason = 1; else  
+    if (happening) newReason = 2; else
+    if (motorSoundOn) newReason = 3;
+    else newReason = 4;
+  }
+  /*if (!soundEnabled) {
+    noTone(soundPin);
+    return;
+  }*/
+  if (millis() - last < lastSoundDuration && last != 0 && newReason == lastReason) return;
+  lastReason = newReason;
+
+  int duration = bell(6, 7);
+  if (mamaCalling) {
+    lastSoundDuration = duration+100+random(500)+k/10;
+  } else if (happening) {
+    lastSoundDuration = duration+300+random(700)+k/10;
+  } else if (motorSoundOn) {
+    lastSoundDuration = duration+500+random(900)+k;
+  } else {
+    lastSoundDuration = duration+2000+random(8000)+k;
+  }
+  
+  k += kInc ? random(5) : -random(5);
+  int base = 3000;
+  int freq = base+k*25+bell(13000, 10);
+  if (freq < 10000) {
+    tone(soundPin, freq, duration);
+  } else {
+    noTone(soundPin);
+  }
+  last = millis();
+  if (k > 200) {
+    kInc = false;
+  } else if (k < 0) {
+    kInc = true;
+  }
+}
+
 int readAnalogPin(int pin) {
-  // Read twice to avoid problems
   analogRead(pin);
-  int value = analogRead(pin);
+  // Read twice to avoid problems
+  int value = (analogRead(pin)+analogRead(pin))/2;
   #ifdef DEBUG
   Serial.println(value);
   #endif
@@ -94,17 +185,23 @@ int max4Index(int a, int b, int c, int d) {
   if (maxValue == c) return 2;
   return 3;
 }
+int secondMax4Index(int a, int b, int c, int d) {
+  int maxInd = max4Index(a,b,c,d);
+  int aa = (maxInd == 0) ? b : a;
+  int bb = (maxInd == 1) ? c : b;
+  int cc = (maxInd == 2) ? d : c;
+  int dd = (maxInd == 3) ? a : d;
+  return max4Index(aa,bb,cc,dd);
+}
+int max2Index(int a, int b) {
+  if (a >= b) return 0; else return 1;
+}
 
-// Clockwise
-const int
-  FRONT = 0,
-  RIGHT = 1,
-  BACK  = 2,
-  LEFT  = 3;
 struct Quad {
   int frontPin, rightPin, backPin, leftPin;
   int front, right, back, left;
-  int min, minIndex, max, maxIndex, avg;
+  int xFront, xRight, xBack, xLeft;
+  int min, minIndex, max, maxIndex, avg, diff, diffDir1, diffDir2;
 };
 void QuadCalcStats(struct Quad* q) {
   q->min      = min4(q->front, q->right, q->back, q->left);
@@ -112,6 +209,19 @@ void QuadCalcStats(struct Quad* q) {
   q->minIndex = min4Index(q->front, q->right, q->back, q->left);
   q->maxIndex = max4Index(q->front, q->right, q->back, q->left);
   q->avg      = avg4(q->front, q->right, q->back, q->left);
+  //q->diff     = max4(abs(q->front - q->xFront), abs(q->right - q->xRight), abs(q->back - q->xBack), abs(q->left - q->xLeft));
+  //q->diff     = q->front-q->xFront + q->right-q->xRight + q->back-q->xBack + q->left-q->xLeft;
+  int frontDiff = abs(q->front-q->xFront);
+  int rightDiff = abs(q->right-q->xRight);
+  int backDiff  = abs(q->back-q->xBack);
+  int leftDiff  = abs(q->left-q->xLeft);
+  q->diff = frontDiff + rightDiff + backDiff + leftDiff;
+  q->diffDir1 = max4Index(frontDiff, rightDiff, backDiff, leftDiff);
+  q->diffDir2 = secondMax4Index(frontDiff, rightDiff, backDiff, leftDiff);
+  q->xFront   = q->front;
+  q->xRight   = q->right;
+  q->xBack    = q->back;
+  q->xLeft    = q->left;
 }
 
 // Global counter
@@ -119,7 +229,7 @@ unsigned long cnt = 0;
 
 
 //
-// Photoresistors
+// Photoresistors (LDR07)
 // https://hairyfotr.psywerx.org/share/2017-ZoranStebri/orientation.png
 // Orange, Blue, Blue/White, Orange/White wires
 // front, right, back, left
@@ -138,15 +248,87 @@ Quad photo = {
   A1,A0,A3,A2,
   #endif
   #ifdef IIIII
-  A3,A2,A0,A1,
+  A0,A1,A3,A2,
   #endif
   0,0,0,0,     // Values
-  0,0,0,0,0    // Calculated values
+  0,0,0,0,     // ExValues
+  0,0,0,0,0,0,0,0  // Calculated values
 };
 Quad lastPhoto = photo;
 bool photoChanged = false;
 
-void handlePhotoResistors() {
+int diffDirs[4];
+int diffCounter = 0;
+int diffSum = 0;
+float xDiffAvg = 0, xxDiffAvg = 0;
+#define diffLimit 50
+unsigned long lastMamaDetection = 0;
+
+void detectMamasCalls() {
+  int diff = photo.diff > 3 ? 1 : 0;
+  if (diff != 0) {
+    diffDirs[photo.diffDir1] += 2;
+    diffDirs[photo.diffDir2] += 1;
+  }
+  diffSum += diff;
+  diffCounter++;
+
+  #define borderThresh 0.35
+  #define fullThresh 0.45
+  
+  if (diffCounter > diffLimit) {
+    float diffAvg = diffSum / (float)diffLimit;
+    //Serial.println("Diff: " + String(diffAvg));
+    if (mamaCalling && diffAvg < borderThresh) {
+      mamaCalling = false;
+      soundEnabled = false;
+      xxDiffAvg = 0;
+      xDiffAvg = 0;
+      diffSum = 0;
+    } else if (diffAvg > fullThresh && xDiffAvg > fullThresh && xxDiffAvg > borderThresh && (diffAvg+xDiffAvg+xxDiffAvg)/3 > fullThresh) {
+      mamaCalling = true;
+      soundEnabled = true;
+      mamaDir = max4Index(diffDirs[0], diffDirs[1], diffDirs[2], diffDirs[3]);
+      mamaAngle = mamaDir*90;
+      // Starting angle
+      float leftDiffDirs  = diffDirs[(mamaDir+1)%4];
+      float rightDiffDirs = diffDirs[(mamaDir+3)%4];
+      float secondDiffDirs = max(leftDiffDirs, rightDiffDirs);
+      // Exact angle
+      float diffFreq1 = diffDirs[mamaDir];
+      float diffFreq2 = secondDiffDirs;
+      float diffFreqSum = diffFreq1+diffFreq2;
+      float mamaAngleQuadrant = rightDiffDirs > leftDiffDirs ? -90 : 90;
+      float mamaAnglePercent = (((diffFreq1 > diffFreq2) ? diffFreq2 : diffFreq1)/diffFreqSum);
+      mamaAngle +=  mamaAngleQuadrant * mamaAnglePercent;
+      if (mamaAngle < 0) mamaAngle += 360;
+      if (mamaAngle > 360) mamaAngle -= 360;
+      
+      Serial.println(diffAvg);
+      Serial.println(diffDirs[0]);
+      Serial.println(diffDirs[1]);
+      Serial.println(diffDirs[2]);
+      Serial.println(diffDirs[3]);
+      Serial.println(mamaAngle);
+      Serial.println("Mama detected in direction: " + dirToString(mamaDir));
+      diffDirs[0] = 0;
+      diffDirs[1] = 0;
+      diffDirs[2] = 0;
+      diffDirs[3] = 0;
+    }
+    xxDiffAvg = xDiffAvg;
+    xDiffAvg = diffAvg;
+    diffSum = 0;
+    diffCounter = 0;
+  }
+}
+
+unsigned long lastLDRTime = 0;
+void handleLDRs() {
+  unsigned long now = millis();
+  if (now-lastLDRTime < 20) return;
+  lastLDRTime = now;
+
   lastPhoto = photo;
 
   #ifdef DEBUG
@@ -157,10 +339,11 @@ void handlePhotoResistors() {
   photo.right = readAnalogPin(photo.rightPin);
   photo.back  = readAnalogPin(photo.backPin);
   photo.left  = readAnalogPin(photo.leftPin);
-
   QuadCalcStats(&photo);
 
   photoChanged = abs(lastPhoto.max - photo.max) > 25;
+
+  detectMamasCalls();
 }
 
 
@@ -185,22 +368,23 @@ ST_HW_HC_SR04
   #endif
 Quad sonar = {
   0,0,0,0,  // Pins (... but not used here)
+  0,0,0,0,  // ExValues
   0,0,0,0,  // Values
-  0,0,0,0,0 // Calculated values
+  0,0,0,0,0,0,0,0 // Calculated values
 };
 Quad lastSonar = sonar;
 bool sonarChanged = false;
 
 int readSonar(ST_HW_HC_SR04 sonar, int lastDistance) {
-  // Delay to eliminate echoes and the accidentally synced
-  delay(random(20, 40));
+  // Delay to eliminate echoes and accidentally synced sonars
+  sleep(random(10, 15));
   int distance = sonar.getHitTime() / 29;
   if (distance <= 0) {
-    delay(10);
+    sleep(random(10, 15));
     distance = sonar.getHitTime() / 29;
   }
   if (distance <= 0) {
-    delay(10);
+    sleep(random(10, 15));
     distance = sonar.getHitTime() / 29;
   }
   if (distance <= 0 && lastDistance > 0 && lastDistance < 400) {
@@ -228,7 +412,6 @@ void handleSonars() {
   sonar.right = readSonar(sonarRight, sonar.right);
   sonar.back  = readSonar(sonarBack, sonar.back);
   sonar.left  = readSonar(sonarLeft, sonar.left);
-
   QuadCalcStats(&sonar);
 
   sonarChanged = abs(lastSonar.max - sonar.max) > 15;
@@ -283,7 +466,7 @@ void handleLed() {
     /// Would need history and pattern detection (nyquist-shannon = freq < 2x detection rate)
     /// Or simply: count the number of changes in the last 50 measurements
 
-    if (blinky == 0 && random(100) > 98) {
+    if (blinky == 0 && random(100) > 8) {//98
       blinky = blinkySteps;
     }
     if (blinky > 0) {
@@ -323,6 +506,7 @@ unsigned long
   motorStopTime = millis(), motorStopDuration = 0;
 
 void controlMotors(int action) {
+  motorSoundOn = (action != STOP);
   digitalWrite(motorLeftPin1, (action & 1) ? HIGH : LOW);
   digitalWrite(motorLeftPin2, (action & 1) ? HIGH : LOW);
   digitalWrite(motorRightPin, (action & 2) ? HIGH : LOW);
@@ -399,14 +583,14 @@ void handleMotors() {
 }
 
 
-/////////////////
-/// MAIN PART ///
-/////////////////
+//////////////////
+/// SETUP PART ///
+//////////////////
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
-  // Init photoresistors
+  // Init LDRs
   pinMode(photo.frontPin, INPUT);
   pinMode(photo.rightPin, INPUT);
   pinMode(photo.backPin,  INPUT);
@@ -431,62 +615,68 @@ void setup() {
   pinMode(ledPin2, OUTPUT);
 }
 
-void loop() {
-  delay(100);
-  cnt++;
+/////////////////
+/// LOOP PART ///
+/////////////////
 
+void loop() {
+    #define MOTOR_TEST
+    #ifdef MOTOR_TEST
+      controlMotors(GO_FORWARD);
+      sleep(10000);
+
+      controlMotors(STOP);
+      sleep(10000);
+
+      /*controlMotors(GO_LEFT);
+      delay(10000);
+      
+      controlMotors(STOP);
+      delay(15000);
+      
+      controlMotors(GO_FORWARD);
+      delay(10000);
+      
+      controlMotors(STOP);
+      delay(15000);
+
+      controlMotors(GO_RIGHT);
+      delay(10000);
+      
+      controlMotors(STOP);
+      delay(15000);
+      return;*/
+    #endif
+
+  //#define LIGHT_TEST
   #ifdef LIGHT_TEST
     Serial.println("Light");
+    //digitalWrite(13, HIGH);
     analogWrite(ledPin1, 255);
     analogWrite(ledPin2, 255);
 
-    delay(2000);
+    delay(100);
     Serial.println("No Light");
     //digitalWrite(13, LOW);
     analogWrite(ledPin1, 0);
     analogWrite(ledPin2, 0);
+    delay(100);
+    if (cnt % 50 == 0) {
+      delay(10000);
+    }
+    cnt++;
+    return;
   #endif
 
-  #ifdef MOTOR_TEST
-    Serial.println("Left");
-    digitalWrite(motorLeftPin1, HIGH);
-    digitalWrite(motorLeftPin2, HIGH);
-    delay(2000);
-    digitalWrite(motorLeftPin1, LOW);
-    digitalWrite(motorLeftPin2, LOW);
-    digitalWrite(motorRightPin, LOW);
-
-    delay(500);
-
-    Serial.println("Right");
-    digitalWrite(motorRightPin, HIGH);
-    delay(2000);
-    digitalWrite(motorLeftPin1, LOW);
-    digitalWrite(motorLeftPin2, LOW);
-    digitalWrite(motorRightPin, LOW);
-
-    delay(500);
-
-    Serial.println("Both");
-    digitalWrite(motorLeftPin1, HIGH);
-    digitalWrite(motorLeftPin2, HIGH);
-    digitalWrite(motorRightPin, HIGH);
-    delay(2000);
-    Serial.println("None");
-    digitalWrite(motorLeftPin1, LOW);
-    digitalWrite(motorLeftPin2, LOW);
-    digitalWrite(motorRightPin, LOW);
-
-    delay(500);
-  #endif
-
-  // Read inputs
-  handlePhotoResistors();
+  handleEvents(100);
+  cnt++;
   handleSonars();
+  handleEvents(10);
 
   // Control outputs
   #ifndef DisableLED
   handleLed();
+  handleEvents(10);
   #endif
   #ifndef DisableMotors
   handleMotors();
